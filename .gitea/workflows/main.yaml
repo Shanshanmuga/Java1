@@ -1,0 +1,52 @@
+name: Deploy Static Website
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build_and_deploy:
+    runs-on: [ubuntu-latest, ubuntu-22.04, ubuntu-20.04]
+
+    steps:
+      - name: Step 1 - Checkout main branch from Gitea
+        uses: actions/checkout@v2
+
+      - name: Step 2 - Install SSH Client and sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-client sshpass          
+
+      - name: Step 3 - Create Temporary Directory and Copy Files
+        run: |
+          mkdir -p ../temp_dir
+          cp -r * ../temp_dir          
+
+      - name: Step 4 - Package Files into a Tarball
+        run: |
+          tar -czvf website_files.tar.gz -C ../temp_dir .          
+
+      - name: Step 5 - Copy Tarball to Remote Server
+        run: |
+          sshpass -p "${{ secrets.PASSWORD }}" scp -o StrictHostKeyChecking=no website_files.tar.gz ${{ secrets.USERNAME }}@${{ secrets.HOST }}:/tmp/          
+        env:
+          PASSWORD: ${{ secrets.PASSWORD }}
+
+      - name: Step 6 - Extract Files on Remote Server and Move to Web Directory
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          password: ${{ secrets.PASSWORD }}
+          port: ${{ secrets.PORT }}
+          script: |
+            sudo rm -rf /var/www/html/website_files/*
+            sudo mkdir -p /var/www/html/website_files
+            sudo tar -xzvf /tmp/website_files.tar.gz -C /var/www/html/website_files --strip-components=1
+            sudo rm /tmp/website_files.tar.gz            
+
+      - name: Step 7 - Clean Up Temporary Directory
+        run: |
+          rm -rf ../temp_dir
+          rm -f website_files.tar.gz     
